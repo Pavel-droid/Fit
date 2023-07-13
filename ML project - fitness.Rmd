@@ -1,0 +1,174 @@
+---
+title: "Practical Machine Lerning - final project"
+author: "PP"
+date: "2023-07-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Background information
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Assignment
+The goal of this project is to predict the manner in which several persons did the exercise. This is the "classe" variable in the training set. Other variables may used to predict with. Created report should describe how the model was built, how cross validation was used, explanation of the expected out of sample error. Created prediction model will be used to predict 20 different test cases. 
+
+## Results and conclusions
+Based on performed analysis the best model for this task is random forest model with predicted accuracy over 99% and out-of-sample error around 0.005. Results of classification of test data set are in chapter Prediction on Test set.
+
+## Preparation steps
+Loading of needed libraries and data set.
+```{r }
+library(tidyverse)
+library(caret)
+library(gbm)
+library(randomForest)
+library(rattle)
+#library(corrplot)
+set.seed(8791)
+
+url_train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(url_train, destfile = "train.csv",  method = "auto")
+download.file(url_test, destfile = "test.csv", method = "auto")
+```
+
+Loading data sets to R and basic analysis of dimensions
+```{r}
+training <- read.csv("train.csv")
+testing <- read.csv("test.csv")
+
+dim(training)
+dim(testing)
+```
+Data sets consist of 160 variables, training set has 19622 observations and testing set has 20 observations.
+
+## Cleansing of training data
+As there are 160 variables and almost 20000 observations, it is helpful to analyze basic quality of of this data set and remove obvious errors and imperfections.
+```{r}
+# removing non relevant columns with time and personal data
+training_cleansed <- training[,-c(1:7)]
+
+# removing columns with NAs
+na_perc <- colSums(is.na(training_cleansed)) / nrow(training_cleansed)
+threshold <- 0.9 
+selected_columns <- na_perc < threshold
+training_cleansed <- training_cleansed[, selected_columns]
+
+# removing columns with small variance
+nvz <- nearZeroVar(training_cleansed)
+training_cleansed <- training_cleansed[,-nvz]
+
+dim(training_cleansed)
+```
+There is significant reduction of variables down to 53.
+
+## Data preparation for models
+Sub setting training set for training and validation
+```{r}
+set.seed(1212)
+training_cleansed$classe <- as.factor(training_cleansed$classe) # change to factor variable
+
+inTrain <- createDataPartition(y=training_cleansed$classe, p=0.7, list=F)
+train <- training_cleansed[inTrain,]
+test <- training_cleansed[-inTrain,]
+```
+
+## Modelling and testing of models
+The idea here is to test several models to see which perform best.
+Models to be tested:
+- Decision tree
+- Random forest
+- Gradient boosting machine
+
+For cross validation we are going to use K-fold approach and in our case there will be 5 folds used for cross validation.
+```{r}
+set.seed(1313)
+control <- trainControl(method="cv", number=2, verboseIter=F)
+```
+
+## 1. Decision tree
+Model
+```{r}
+set.seed(1414)
+model_trees <- train(classe~., data=train, method="rpart", trControl = control, tuneLength = 5)
+```
+
+Prediction
+```{r}
+pred_trees <- predict(model_trees, test)
+cmxtrees <- confusionMatrix(pred_trees, factor(test$classe))
+cmxtrees
+```
+
+## 2. Random forest
+Model
+```{r}
+set.seed(1515)
+model_rf <- train(classe~., data=train, method="rf", trControl = control, tuneLength = 5)
+```
+
+Prediction
+```{r}
+pred_rf <- predict(model_rf, test)
+cmxrf <- confusionMatrix(pred_rf, factor(test$classe))
+cmxrf
+```
+
+## 3. Gradient boosting machine
+Model
+```{r}
+set.seed(1616)
+model_gbm <- train(classe~., data=train, method="gbm", trControl = control, tuneLength = 5, verbose = F)
+```
+
+Prediction
+```{r}
+pred_gbm <- predict(model_gbm, test)
+cmxgbm <- confusionMatrix(pred_gbm, factor(test$classe))
+cmxgbm
+```
+
+Comparison of models based on accuracy and out of sample error
+```{r}
+comparison_table <- data.frame(
+  Model = c("Decision Tree", "Random Forest", "Gradient Boosting"),
+  Accuracy = c(cmxtrees$overall["Accuracy"], cmxrf$overall["Accuracy"], cmxgbm$overall["Accuracy"]),
+  OOS_Error = c(1 - cmxtrees$overall["Accuracy"], 1 - cmxrf$overall["Accuracy"], 1 - cmxgbm$overall["Accuracy"])
+)
+
+print(comparison_table)
+```
+Random Forest model performed the best among the three models. It achieved the highest accuracy, indicating better classification performance on unseen data, and the lowest out-of-sample error, suggesting robustness and generalization ability. As the predicted accuracy is over 99% it is not needed to further fine tune training process and model.
+
+## Prediction on Test set
+Prediction on unseen data using trained random forest model.
+```{r}
+pred <- predict(model_rf, testing)
+print(pred)
+```
+
+## Appendix
+Graphical documentation of used models.
+
+## 1. Decision trees
+```{r}
+fancyRpartPlot(model_trees$finalModel)
+plot(model_trees)
+```
+
+## 2.Random forest
+```{r}
+plot(model_rf)
+```
+
+## 3.Gradient boosting machine
+```{r}
+plot(model_gbm)
+```
+
+
